@@ -1,2 +1,2 @@
-# multi_agent_control_research
+# Multi Agent Control Research
 Purdue University Research utilizing multi-agen control algorithms and systems.
