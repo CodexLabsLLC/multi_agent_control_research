@@ -39,8 +39,8 @@ print("State %s: %s" % pprint.pformat(veh_2_name, state))
 
 airsim.wait_key('Press any key to begin flying the route:')
 for waypoint in route.waypoints["points"]:
-    f1 = client.moveToPositionAsync(waypoint, 5, vehicle_name=veh_1_name)
-    f2 = client.moveToPositionAsync(waypoint, 5, vehicle_name=veh_2_name)
+    f1 = client.moveToPositionAsync(waypoint[0], waypoint[1], waypoint[2], 5, vehicle_name=veh_1_name)
+    f2 = client.moveToPositionAsync(waypoint[0], waypoint[1], waypoint[2], 4, vehicle_name=veh_2_name)
     f1.join()
     f2.join()
 
