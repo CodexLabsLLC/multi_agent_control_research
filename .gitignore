@@ -4,3 +4,6 @@ __pycache__/
 
 # Ignore virutalenv files
 venv/
+
+# Ignore VS Code generate files
+.DS_store
