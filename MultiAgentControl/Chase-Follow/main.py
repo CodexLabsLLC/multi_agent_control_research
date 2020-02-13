@@ -6,6 +6,7 @@ import os
 import tempfile
 import pprint
 import cv2
+import time
 from nav import Nav
 
 veh_1_name = 'Lead'
@@ -14,6 +15,10 @@ waypoints_path_list = 'waypoints.json'
 
 # Load route
 route = Nav(waypoints_path_list)
+route.build_path()
+print(len(route.primary_route))
+print(route.primary_route[0])
+print(route.primary_route[route.numb_waypoints - 1])
 
 # connect to the AirSim simulator
 client = airsim.MultirotorClient()
@@ -43,9 +48,17 @@ airsim.wait_key('Press any key to begin flying the route:')
 
 #Fly the waypoint route. Ensure that the second vehicle triggers the join()
 # so as the halt the loop.
-for waypoint in route.waypoints["points"]:
+for i, waypoint in enumerate(route.primary_route):
     f1 = client.moveToPositionAsync(waypoint[0], waypoint[1], waypoint[2], waypoint[3], vehicle_name=veh_1_name)
-    f2 = client.moveToPositionAsync(waypoint[0], waypoint[1], waypoint[2], waypoint[3], vehicle_name=veh_2_name)
+    #f1.join()
+    if (i % 10 == 0):
+        f2 = client.moveToPositionAsync(waypoint[0], waypoint[1], waypoint[2] - 0.1, waypoint[3] + 1, vehicle_name=veh_2_name)
+    else:
+        f2 = client.moveToPositionAsync(waypoint[0], waypoint[1], waypoint[2], waypoint[3], vehicle_name=veh_2_name)
+    #f2.join()
+
+    if (i % 100 == 0):
+        print(waypoint)
     f2.join()
 
 client.hoverAsync().join()
