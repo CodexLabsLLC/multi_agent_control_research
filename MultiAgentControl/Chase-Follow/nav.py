@@ -5,7 +5,7 @@ import json
 class Nav:
     def __init__(self, waypoint_list_path):
         # Load waypoints for lead to follow and chase to receive
-        self.waypoints = json.load(open(waypoint_list_path, 'rb'))
+        self.waypoints = json.load(open(waypoint_list_path))
     
     def returnThree(self):
         """

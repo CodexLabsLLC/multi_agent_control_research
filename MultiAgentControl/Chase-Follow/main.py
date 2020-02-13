@@ -26,22 +26,26 @@ client.armDisarm(True, veh_1_name)
 client.armDisarm(True, veh_2_name)
 
 airsim.wait_key('Press any key to takeoff')
-f1 = client.takeoffAsync(vehicle_name='Drone1')
-f2 = client.takeoffAsync(vehicle_name='Drone2')
+f1 = client.takeoffAsync(vehicle_name=veh_1_name)
+f2 = client.takeoffAsync(vehicle_name=veh_2_name)
 f1.join()
 f2.join()
 
 state = client.getMultirotorState(vehicle_name=veh_1_name)
-print("State %s: %s" % pprint.pformat(veh_1_name, state))
+print(veh_1_name, "\n")
+print("State: %s" % pprint.pformat(state))
 
 state = client.getMultirotorState(vehicle_name=veh_2_name)
-print("State %s: %s" % pprint.pformat(veh_2_name, state))
+print(veh_2_name, "\n")
+print("State: %s" % pprint.pformat(state))
 
 airsim.wait_key('Press any key to begin flying the route:')
+
+#Fly the waypoint route. Ensure that the second vehicle triggers the join()
+# so as the halt the loop.
 for waypoint in route.waypoints["points"]:
-    f1 = client.moveToPositionAsync(waypoint[0], waypoint[1], waypoint[2], 5, vehicle_name=veh_1_name)
-    f2 = client.moveToPositionAsync(waypoint[0], waypoint[1], waypoint[2], 4, vehicle_name=veh_2_name)
-    f1.join()
+    f1 = client.moveToPositionAsync(waypoint[0], waypoint[1], waypoint[2], waypoint[3], vehicle_name=veh_1_name)
+    f2 = client.moveToPositionAsync(waypoint[0], waypoint[1], waypoint[2], waypoint[3], vehicle_name=veh_2_name)
     f2.join()
 
 client.hoverAsync().join()
