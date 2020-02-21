@@ -12,6 +12,7 @@ from nav import Nav
 veh_1_name = 'Lead'
 veh_2_name = 'Follow'
 waypoints_path_list = 'waypoints.json'
+CONFIRMATION_DISTANCE = 1.5
 
 # Load route
 route = Nav(waypoints_path_list)
@@ -46,20 +47,43 @@ print("State: %s" % pprint.pformat(state))
 
 airsim.wait_key('Press any key to begin flying the route:')
 
-#Fly the waypoint route. Ensure that the second vehicle triggers the join()
+# Fly the waypoint route. Ensure that the second vehicle triggers the join()
 # so as the halt the loop.
 for i, waypoint in enumerate(route.primary_route):
+    try:
+        next_point = route.primary_route[i + 1]
+    except Exception as error:
+        print('Final point!')
+        next_point = False
     f1 = client.moveToPositionAsync(waypoint[0], waypoint[1], waypoint[2], waypoint[3], vehicle_name=veh_1_name)
-    #f1.join()
     if (i % 10 == 0):
         f2 = client.moveToPositionAsync(waypoint[0], waypoint[1], waypoint[2] - 0.1, waypoint[3] + 1, vehicle_name=veh_2_name)
     else:
         f2 = client.moveToPositionAsync(waypoint[0], waypoint[1], waypoint[2], waypoint[3], vehicle_name=veh_2_name)
-    #f2.join()
 
-    if (i % 100 == 0):
+    if (i % 5 == 0):
         print(waypoint)
-    f2.join()
+
+    # Instead of join, pull state and get GPS data to confirm where the drone is at
+    kinematics = client.simGetGroundTruthKinematics(vehicle_name=veh_1_name)
+    if next_point:
+        # For the first point, the drones need to fly to a normalized location
+        if i == 0:
+            f2.join()
+        else:
+            while (abs(kinematics.position.x_val - abs(next_point[0])) - 3) > CONFIRMATION_DISTANCE and (abs(kinematics.position.y_val - abs(next_point[1])) - 3) > CONFIRMATION_DISTANCE and abs(abs(kinematics.position.z_val) - abs(next_point[2])) > CONFIRMATION_DISTANCE:
+                kinematics = client.simGetGroundTruthKinematics(vehicle_name=veh_1_name)
+                print('\n')
+                print(kinematics.position.x_val)
+                print(kinematics.position.y_val)
+                print(kinematics.position.z_val)
+                print((abs(kinematics.position.x_val - abs(next_point[0])) - 3))
+                print((abs(kinematics.position.y_val - abs(next_point[0])) - 3))
+                print(abs(abs(kinematics.position.z_val) - abs(next_point[2])))
+                print('\n')
+                time.sleep(0.2)
+       
+   # f1.join()
 
 client.hoverAsync().join()
 

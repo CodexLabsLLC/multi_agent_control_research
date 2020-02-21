@@ -4,7 +4,7 @@ import json
 from math import ceil
 
 class Nav:
-    def __init__(self, waypoint_list_path, numb_waypoints=10000):
+    def __init__(self, waypoint_list_path, numb_waypoints=50):
         # Load waypoints for lead to follow and chase to receive
         self.waypoints = json.load(open(waypoint_list_path))
         self.primary_route = None
