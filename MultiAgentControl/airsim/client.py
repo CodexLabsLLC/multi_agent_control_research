@@ -306,7 +306,7 @@ class MultirotorClient(VehicleClient, object):
         :param vy_max: max velocity allowed in y direction
         :param vz_max: max velocity allowed in z direction
         :param z_min: min z allowed for vehicle position
-        :param duration: after this duration vehicle would switch back to non-manual mode
+        :param duration: after this duration vehicle would switch back to non-manual mode in seconds
         :param drivetrain: when ForwardOnly, vehicle rotates itself so that its front is always facing the direction of travel. If MaxDegreeOfFreedom then it doesn't do that (crab-like movement)
         :param yaw_mode: Specifies if vehicle should face at given angle (is_rate=False) or should be rotating around its axis at given rate (is_rate=True)
         """
