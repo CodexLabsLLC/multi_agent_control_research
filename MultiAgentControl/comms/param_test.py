@@ -32,10 +32,11 @@ f2.join()
 state = client.getMultirotorState(vehicle_name=veh_1_name)
 state_2 = client.getMultirotorState(vehicle_name=veh_2_name)
 drone_2_location = state_2.gps_location
-print("Distance between drones: %s meters" % round(haversine(drone_2_location.latitude, drone_2_location.longitude, state.gps_location.latitude, state.gps_location.longitude), 4) * 1000)
+
+print("Distance between drones: %s meters" % round((haversine(drone_2_location.latitude, drone_2_location.longitude, state.gps_location.latitude, state.gps_location.longitude) * 1000), 4))
 comms_data = client.getCommunicationsData(drone_2_location.latitude, drone_2_location.longitude, drone_2_location.altitude, vehicle_name=veh_1_name)
 print(veh_1_name, "\n")
-print("State: %s" % pprint.pformat(state))
+# print("State: %s" % pprint.pformat(state))
 print("Comms Data: %s" % pprint.pformat(comms_data))
 
 airsim.wait_key('Press any key to reset to original state')
