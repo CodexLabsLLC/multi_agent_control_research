@@ -8,6 +8,8 @@ import pprint
 import cv2
 import time
 
+from utils.distance_utils import haversine
+
 veh_1_name = 'Lead'
 veh_2_name = 'Follow'
 
@@ -30,6 +32,7 @@ f2.join()
 state = client.getMultirotorState(vehicle_name=veh_1_name)
 state_2 = client.getMultirotorState(vehicle_name=veh_2_name)
 drone_2_location = state_2.gps_location
+print("Distance between drones: %s meters" % round(haversine(drone_2_location.latitude, drone_2_location.longitude, state.gps_location.latitude, state.gps_location.longitude), 4) * 1000)
 comms_data = client.getCommunicationsData(drone_2_location.latitude, drone_2_location.longitude, drone_2_location.altitude, vehicle_name=veh_1_name)
 print(veh_1_name, "\n")
 print("State: %s" % pprint.pformat(state))
