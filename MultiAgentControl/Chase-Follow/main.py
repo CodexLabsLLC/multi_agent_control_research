@@ -38,8 +38,10 @@ f1.join()
 f2.join()
 
 state = client.getMultirotorState(vehicle_name=veh_1_name)
+comms_data = client.getCommunicationsData(vehicle_name=veh_1_name)
 print(veh_1_name, "\n")
 print("State: %s" % pprint.pformat(state))
+print("Comms Data: %s" % pprint.pformat(comms_data))
 
 state = client.getMultirotorState(vehicle_name=veh_2_name)
 print(veh_2_name, "\n")

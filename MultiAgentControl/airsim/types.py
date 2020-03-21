@@ -349,6 +349,11 @@ class MultirotorState(MsgpackMixin):
     ready_message = ""
     can_arm = False
 
+class CommunicationsData(MsgpackMixin):
+    can_communicate = False
+    communication_distance = .003
+    communication_prevented = False
+
 class ProjectionMatrix(MsgpackMixin):
     matrix = []
 

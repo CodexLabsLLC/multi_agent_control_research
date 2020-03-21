@@ -39,7 +39,7 @@ f1 = client.takeoffAsync()
 f1.join()
 
 airsim.wait_key('Begin movement towards obstacle')
-client.moveByVelocityAsync(-2, 0, -1, 2000)
+client.moveByVelocityAsync(0, -2, 0, 2000)
 
 # Load saved training params as ordinary NumPy
 W,b = pickle.load(open('params.pkl', 'rb'))

@@ -326,6 +326,10 @@ class MultirotorClient(VehicleClient, object):
         return MultirotorState.from_msgpack(self.client.call('getMultirotorState', vehicle_name))
     getMultirotorState.__annotations__ = {'return': MultirotorState}
 
+    def getCommunicationsData(self, latitude = 0.0, longitude = 0.0, altitude = 0.0, vehicle_name = ''):
+        return CommunicationsData.from_msgpack(self.client.call('getCommunicationsData', latitude, longitude, altitude, vehicle_name))
+    getCommunicationsData.__annotations__ = {'return': CommunicationsData}
+
 
 # -----------------------------------  Car APIs ---------------------------------------------
 class CarClient(VehicleClient, object):

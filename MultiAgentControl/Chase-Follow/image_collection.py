@@ -38,7 +38,7 @@ f1 = client.takeoffAsync()
 f1.join()
 
 airsim.wait_key('Begin movement towards obstacle')
-client.moveByVelocityAsync(0, -1, 0, 2000)
+client.moveByVelocityAsync(0, -2, 0, 2000)
 
 imagequeue = []
 
