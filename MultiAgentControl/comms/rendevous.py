@@ -4,21 +4,29 @@ import airsim
 import numpy as np
 import pprint
 import time
-
+import traceback
+from scipy import floor, ceil
 from utils.distance_utils import haversine
+
 
 def enable_control(client, vehicle_names: list) -> None:
 	for vehicle in vehicle_names:	
 		client.enableApiControl(True, vehicle)
 		client.armDisarm(True, vehicle)
 
+
 def disable_control(client, vehicle_names: list) -> None:
-	for vehicle in vehicle_names:
+	for vehicle in vehicle_names:                                                      
 		client.armDisarm(False, vehicle)
 		client.enableApiControl(False, vehicle)
 
 
 def takeoff(client, vehicle_names: list) -> None:
+	"""
+	   Make all vehicles takeoff, one at a time and return the
+	   pointer for the last vehicle takeoff to ensure we wait for
+	   all drones  
+	"""
 	vehicle_pointers = []
 	for vehicle in vehicle_names:
 		vehicle_pointers.append(client.takeoffAsync(vehicle_name=vehicle))
@@ -29,7 +37,8 @@ def takeoff(client, vehicle_names: list) -> None:
 
 def get_all_drone_positions(client, vehicle_names: list, position_tracker: np.array) -> np.array:
 	for i, vehicle in enumerate(vehicle_names):
-		position_tracker[i] = client.getMultirotorState(vehicle_name=vehicle).gps_location
+		state_data = client.getMultirotorState(vehicle_name=vehicle)
+		position_tracker[i] = [state_data.gps_location, state_data.kinematics_estimated.position] 
 	return position_tracker
 
 
@@ -39,7 +48,7 @@ def update_communication_matrix(client, comm_matrix: np.array, positions: np.arr
 			if i != j:
 				# i will give you the current drone, e.g. "A"
 				# j will give you the comparison drone, e.g. "B, C, ..."
-				comparison_drone = positions[j]
+				comparison_drone = positions[j][0]
 				# Get comms data for the drone we want "A" in relation to the comparison drone "B, C, ..."
 				comm_matrix[i,j] = client.getCommunicationsData(comparison_drone.latitude, comparison_drone.longitude, comparison_drone.altitude, vehicle_name=vehicle_names[i]).can_communicate
 			else:
@@ -47,7 +56,80 @@ def update_communication_matrix(client, comm_matrix: np.array, positions: np.arr
 
 
 def propagate_coordinates(client, comm_matrix: np.array, positions: np.array, vehicle_names: list):
-	pass
+	new_positions = np.zeros((len(vehicle_names)), dtype=list)
+	for i, position in enumerate(new_positions):
+		new_positions[i] = []
+	# print(new_positions)
+	for i, drone_comm_params in enumerate(comm_matrix):
+		for j, individual_param in enumerate(drone_comm_params):
+			if comm_matrix[i,j] == True and len(new_positions[i]) < len(vehicle_names):
+				new_positions[i].append(positions[j][1])
+				# print(new_positions)
+	#print(new_positions)
+	for i, drone_positions in enumerate(new_positions):
+		# print('Before the numbers')
+		x = 0.0
+		y = 0.0
+		z = 0.0
+		# print('Right before we go to add them up')
+		for position in drone_positions:
+			# print(position)
+			x += position.x_val
+			y += position.y_val
+			z += position.z_val
+		# print(x, y, z)
+		new_positions[i] = [x/len(drone_positions), y/len(drone_positions), z/len(drone_positions)]
+		# print(drone)
+	return new_positions
+
+
+def fly_to_new_positions(client, vehicle_names: list, new_positions: list, vehicle_offsets: dict, together_tracker: list) -> None:
+	for i, drone in enumerate(vehicle_names):
+		new_position = new_positions[i]
+		# print(new_position)
+		# You have to compensate for each drone's initial starting position, as each command
+		# will be relative to where the drone starts.
+		if drone == "B":
+			new_position[0] += vehicle_offsets["B"][0]
+			new_position[1] += vehicle_offsets["B"][1]
+			new_position[2] += vehicle_offsets["B"][2]
+			velocity = 5
+		elif drone == "C":
+			new_position[0] += vehicle_offsets["C"][0]
+			new_position[1] += vehicle_offsets["C"][1]
+			new_position[2] += vehicle_offsets["C"][2] + 20
+			velocity = 5
+		elif drone == "A":
+			new_position[0] = new_position[0] * -1
+			new_position[1] = new_position[1] * -1
+			velocity = 3
+		print("\n")
+		print("{drone} -> {position}\n".format(drone=drone, position=new_position))
+		if together_tracker[i] == True:
+			client.moveByVelocityAsync(0, 0, 0, 0, vehicle_name=drone)
+		else:
+			client.moveToPositionAsync(new_position[0], new_position[1], -abs(new_position[2]), velocity, vehicle_name=drone)
+		time.sleep(0.1)
+
+
+def determine_distance_between(vehicle_names: list, position_tracker: list) -> bool:
+	distances = np.zeros((len(vehicle_names)), dtype=float)
+	for i, position in enumerate(position_tracker):
+		try:
+			first_drone = position_tracker[i][0]
+			second_drone = position_tracker[i + 1][0]
+			print(first_drone, second_drone)
+			distances[i] = round(haversine(first_drone.latitude, first_drone.longitude, second_drone.latitude, second_drone.longitude)*1000, 3)
+		except IndexError:
+			first_drone = position_tracker[i][0]
+			second_drone = position_tracker[i - 1][0]
+			print(first_drone, second_drone)
+			distances[i] = round(haversine(first_drone.latitude, first_drone.longitude, second_drone.latitude, second_drone.longitude)*1000, 3)
+	print("\n", distances, "\n")
+	together = distances < 5
+	print("\n", together, "\n")
+	return together
+
 
 # Generate a set of drones based upon a given number input and number of swarms.
 # Convention: Capital Letter = Drone Swarm Number = Number of drone in that swarm
@@ -57,7 +139,8 @@ def propagate_coordinates(client, comm_matrix: np.array, positions: np.array, ve
 # Load vehicle names as a list for easy iteration.
 # TO DO: This will be drawn from the parameters file loading (Rules sheet)
 vehicle_names = ["A", "B", "C"]
-time_step = 1 # seconds
+vehicle_offsets = {"B": [-10, 95, -5], "C": [-20, 190, -25]}
+time_step = 3 # seconds
 final_separation_distance = 3 # meters
 
 # We want a matrix to track who can communicate with who!
@@ -90,22 +173,39 @@ try:
 	last_vehicle_pointer.join()
 
 	airsim.wait_key('Press any key to rendevous the drones!')
-
+	start_time = time.time()
 	not_together = True
 	while not_together:
 		# Get initial locations
 		position_tracker = get_all_drone_positions(client, vehicle_names, position_tracker)
+		print("\n")
+		print(position_tracker)
+		print("\n")
 		# Update Communications parameters
 		update_communication_matrix(client, communications_tracker, position_tracker, vehicle_names)
+		print("\n")
 		print(communications_tracker)
-		not_together = False
+		print("\n")
 		# Propagate location to drones that can communicate
-		#propagate_coordinates(client, communications_tracker, position_tracker, vehicle_names)
+		new_positions = propagate_coordinates(client, communications_tracker, position_tracker, vehicle_names)
+		print("\n")
+		print(new_positions)
+		print("\n")
+		# enable_control(client, vehicle_names)
+		together_tracker = determine_distance_between(vehicle_names, position_tracker)
+		fly_to_new_positions(client, vehicle_names, new_positions, vehicle_offsets, together_tracker)
+		# Returns a boolean array to track who is together
+		time.sleep(time_step)
 
+	end_time = time.time()
+	total_time = end_time - start_time
+	minutes = round(total_time / 60, 1)
+	seconds = ceil((total_time / 60) - minutes)
+	print("Total Time: {mins} mins {secs} secs".format(mins=minutes, secs=seconds))
 	airsim.wait_key('Press any key to reset to original state')
 	client.reset()
-except Exception as error:
-	print(error)
+except Exception:
+	traceback.print_exc()
 finally:
 	if client:
 		client.reset()
