@@ -85,46 +85,48 @@ def propagate_coordinates(client, comm_matrix: np.array, positions: np.array, ve
 
 def fly_to_new_positions(client, vehicle_names: list, new_positions: list, vehicle_offsets: dict, together_tracker: list) -> None:
 	for i, drone in enumerate(vehicle_names):
-		new_position = new_positions[i]
-		# print(new_position)
-		# You have to compensate for each drone's initial starting position, as each command
-		# will be relative to where the drone starts.
-		if drone == "B":
-			new_position[0] += vehicle_offsets["B"][0]
-			new_position[1] += vehicle_offsets["B"][1]
-			new_position[2] += vehicle_offsets["B"][2]
-			velocity = 5
-		elif drone == "C":
-			new_position[0] += vehicle_offsets["C"][0]
-			new_position[1] += vehicle_offsets["C"][1]
-			new_position[2] += vehicle_offsets["C"][2] + 20
-			velocity = 5
-		elif drone == "A":
-			new_position[0] = new_position[0] * -1
-			new_position[1] = new_position[1] * -1
-			velocity = 3
-		print("\n")
-		print("{drone} -> {position}\n".format(drone=drone, position=new_position))
-		if together_tracker[i] == True:
-			client.moveByVelocityAsync(0, 0, 0, 0, vehicle_name=drone)
-		else:
-			client.moveToPositionAsync(new_position[0], new_position[1], -abs(new_position[2]), velocity, vehicle_name=drone)
-		time.sleep(0.1)
+		new_positions[i] = set_position_offsets(drone, new_positions[i], vehicle_offsets)
+	for ii, control_drone in enumerate(together_tracker):
+		for jj, other_drone in enumerate(control_drone):
+			if ii != jj and together_tracker[ii, jj] == True:
+				client.moveByVelocityAsync(0, 0, 0, 0, vehicle_name=vehicle_names[i])
+				client.moveByVelocityAsync(0, 0, 0, 0, vehicle_name=vehicle_names[jj])
+			elif ii != jj:
+
+				client.moveToPositionAsync(new_position[0], new_position[1], -abs(new_position[2]), new_position[3], vehicle_name=vehicle_names[i])
+				j += 1
+	time.sleep(0.1)
+
+
+def set_position_offsets(drone_name: string, new_position: list, vehicle_offsets: list) -> list:
+	# print(new_position)
+	# You have to compensate for each drone's initial starting position, as each command
+	# will be relative to where the drone starts.
+	if i == 1:
+		new_position[0] = new_position[0] * -1
+		new_position[1] = new_position[1] * -1
+		new_position[3] = 3
+	else:
+		new_position[0] += vehicle_offsets[drone][0]
+		new_position[1] += vehicle_offsets[drone][1]
+		new_position[2] += vehicle_offsets[drone][2]
+		new_position[3] = 5
+	print("\n")
+	print("{drone} -> {position}\n".format(drone=drone_name, position=new_position))
+	return new_position
 
 
 def determine_distance_between(vehicle_names: list, position_tracker: list) -> bool:
-	distances = np.zeros((len(vehicle_names)), dtype=float)
-	for i, position in enumerate(position_tracker):
-		try:
-			first_drone = position_tracker[i][0]
-			second_drone = position_tracker[i + 1][0]
-			print(first_drone, second_drone)
-			distances[i] = round(haversine(first_drone.latitude, first_drone.longitude, second_drone.latitude, second_drone.longitude)*1000, 3)
-		except IndexError:
-			first_drone = position_tracker[i][0]
-			second_drone = position_tracker[i - 1][0]
-			print(first_drone, second_drone)
-			distances[i] = round(haversine(first_drone.latitude, first_drone.longitude, second_drone.latitude, second_drone.longitude)*1000, 3)
+	distances = np.zeros((len(vehicle_names), len(vehicle_names)), dtype=float)
+	for i, row in enumerate(distances):
+		for j, column in enumerate(row):
+			if i != j:
+				first_drone = position_tracker[i][0]
+				second_drone = position_tracker[j][0]
+				print(first_drone, second_drone)
+				distances[i, j] = round(haversine(first_drone.latitude, first_drone.longitude, second_drone.latitude, second_drone.longitude)*1000, 3)
+			else:
+				distances[i, j] = False
 	print("\n", distances, "\n")
 	together = distances < 5
 	print("\n", together, "\n")
