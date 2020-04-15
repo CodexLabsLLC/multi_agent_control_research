@@ -73,8 +73,9 @@ def propagate_coordinates(client, comm_matrix: np.array, positions: np.array, ve
 			if comm_matrix[i,j] == True and len(new_positions[i]) < len(vehicle_names):
 				new_positions[i].append(positions[j][1])
 				# print(new_positions)
-	print("\n About to average the positions")
-	# print(new_positions)
+	# print("\n About to average the positions")
+	for i, row in enumerate(new_positions):
+			print('\n', vehicle_names[i], row)
 	for i, drone_positions in enumerate(new_positions):
 		# print('Before the numbers')
 		x = 0.0
@@ -86,13 +87,28 @@ def propagate_coordinates(client, comm_matrix: np.array, positions: np.array, ve
 			x += position[0]
 			y += position[1]
 			z += position[2]
-		print(x, y, z)
-		new_positions[i] = [x/len(drone_positions), y/len(drone_positions), z/len(drone_positions)]
-		print("\n", vehicle_names[i], new_positions[i])
+		# print(x, y, z)
+		print('\n', len(drone_positions), '\n')
+		new_positions[i] = [-1*(x/float(len(drone_positions))), -1*(y/float(len(drone_positions))), -abs(z/float(len(drone_positions))), 5]
+	for i, drone in enumerate(vehicle_names):
+			new_positions[i] = remove_position_offsets(drone, new_positions[i], vehicle_offsets, i)
 	return new_positions
 
 
+def correct_position(new_positions, old_position, index):
+	delta_x = abs(new_positions[0] - old_position[0])
+	delta_y = abs(new_positions[1] - old_position[1])
+	delta_z = abs(new_positions[2] - old_position[2])
+
+
+
 def fly_to_new_positions(client, vehicle_names: list, new_positions: list, vehicle_offsets: dict, together_tracker: list, stop_matrix: list) -> None:
+	for i, name in enumerate(vehicle_names):
+		new_position = new_positions[i]
+		print("\n", name, new_position)
+		client.moveToPositionAsync(new_position[0], new_position[1], new_position[2], new_position[3], vehicle_name=name)
+		time.sleep(0.1)
+	"""
 	for ii, control_drone in enumerate(together_tracker):
 		for jj, other_drone in enumerate(control_drone):
 			if ii != jj and together_tracker[ii, jj] == True:
@@ -102,37 +118,43 @@ def fly_to_new_positions(client, vehicle_names: list, new_positions: list, vehic
 				time.sleep(0.1)
 			elif ii != jj:
 				new_position_1 = new_positions[ii]
-				new_position_1.append(5)
 				new_position_2 = new_positions[jj]
-				new_position_2.append(5)
+				print("\n", vehicle_names[ii], new_position_1)
+				print("\n", vehicle_names[jj], new_position_2)
 				if stop_matrix[ii] == False:
-					client.moveToPositionAsync(new_position_1[0], new_position_1[1], -abs(new_position_1[2]), new_position_1[3], vehicle_name=vehicle_names[ii])
-					time.sleep(0.1)
+					pass
 				if stop_matrix[jj] == False:
-					client.moveToPositionAsync(new_position_2[0], new_position_2[1], -abs(new_position_2[2]), new_position_2[3], vehicle_name=vehicle_names[jj])
-					time.sleep(0.1)
+					client.moveToPositionAsync(new_position_2[0], new_position_2[1], new_position_2[2], new_position_2[3], vehicle_name=vehicle_names[jj])
 		time.sleep(0.1)
-
+	"""
+		
 
 def set_position_offsets(drone_name, new_position: list, vehicle_offsets: list, drone_index) -> list:
 	# print(new_position)
 	# You have to compensate for each drone's initial starting position, as each command
 	# will be relative to where the drone starts.
-	if drone_index == 0:
-		new_position[0] = new_position[0] * -1
-		new_position[1] = new_position[1] * -1
-		new_position.append(3)
-	else:
-		new_position[0] += vehicle_offsets[drone_name][0]
-		new_position[1] += vehicle_offsets[drone_name][1]
-		new_position[2] += vehicle_offsets[drone_name][2]
-		new_position.append(5)
-	print("\n")
-	print("{drone} -> {position}\n".format(drone=drone_name, position=new_position))
+	new_position = new_position
+	new_position[0] += vehicle_offsets[drone_name][0]
+	new_position[1] += vehicle_offsets[drone_name][1]
+	new_position[2] += vehicle_offsets[drone_name][2]
+	# print("\n")
+	# print("{drone} -> {position}\n".format(drone=drone_name, position=new_position))
+	return new_position
+
+def remove_position_offsets(drone_name, new_position: list, vehicle_offsets: list, drone_index) -> list:
+	# print(new_position)
+	# You have to compensate for each drone's initial starting position, as each command
+	# will be relative to where the drone starts.
+	new_position = new_position
+	new_position[0] -= vehicle_offsets[drone_name][0]
+	new_position[1] -= vehicle_offsets[drone_name][1]
+	new_position[2] -= vehicle_offsets[drone_name][2]
+	# print("\n")
+	# print("{drone} -> {position}\n".format(drone=drone_name, position=new_position))
 	return new_position
 
 
-def determine_distance_between(vehicle_names: list, position_tracker: list, stop_matrix: list) -> bool:
+def determine_distance_between(vehicle_names: list, position_tracker: list, stop_matrix: list, final_separation_distance: int) -> bool:
 	distances = np.zeros((len(vehicle_names), len(vehicle_names)), dtype=float)
 	for i, row in enumerate(distances):
 		for j, column in enumerate(row):
@@ -144,14 +166,14 @@ def determine_distance_between(vehicle_names: list, position_tracker: list, stop
 			else:
 				distances[i, j] = False
 	# print("\n", distances, "\n")
-	together = distances < 10
+	together = distances < final_separation_distance
 	for i, row in enumerate(together):
 		for j, entry in enumerate(row):
 			if i != j and together[i,j] == True:
 				stop_matrix[i] = True
 				stop_matrix[j] = True
-	print("\n", together, "\n")
-	print("\n", stop_matrix, "\n")
+	# print("\n", together, "\n")
+	# print("\n", stop_matrix, "\n")
 	return together
 
 
@@ -163,9 +185,9 @@ def determine_distance_between(vehicle_names: list, position_tracker: list, stop
 # Load vehicle names as a list for easy iteration.
 # TO DO: This will be drawn from the parameters file loading (Rules sheet)
 vehicle_names = ["A", "B", "C"]
-vehicle_offsets = {"B": [-10, 95, 5], "C": [-20, 190, 25]}
+vehicle_offsets = {"A": [5, -5, 0], "B": [10, -95, 5], "C": [20, -190, 5]}
 time_step = 5 # seconds
-final_separation_distance = 3 # meters
+final_separation_distance = 10 # meters
 
 # We want a matrix to track who can communicate with who!
 # It should be a nxn matrix, with each drone tracking itself and the matrix looks like
@@ -199,14 +221,14 @@ try:
 	airsim.wait_key('Press any key to rendevous the drones!')
 	start_time = time.time()
 	not_together = True
-	first_pass = True
 	stop_matrix = np.zeros((len(vehicle_names)), dtype=bool)
 	while not_together:
 		# Get initial locations
 		position_tracker = get_all_drone_positions(client, vehicle_names, position_tracker)
 		# print("\n")
-		# print(position_tracker)
-		# print("\n")
+		print("="*50)
+		for i, row in enumerate(position_tracker):
+			print('\n', vehicle_names[i], row)
 		# Update Communications parameters
 		update_communication_matrix(client, communications_tracker, position_tracker, vehicle_names)
 		# print("\n")
@@ -218,11 +240,14 @@ try:
 		# print(new_positions)
 		# print("\n")
 		# enable_control(client, vehicle_names)
-		together_tracker = determine_distance_between(vehicle_names, position_tracker, stop_matrix)
+		together_tracker = determine_distance_between(vehicle_names, position_tracker, stop_matrix, final_separation_distance)
 		fly_to_new_positions(client, vehicle_names, new_positions, vehicle_offsets, together_tracker, stop_matrix)
 		# Returns a boolean array to track who is together
 		time.sleep(time_step)
-		first_pass = False
+		print("="*50)
+		print('\n')
+		if sum(stop_matrix) == len(vehicle_names):
+			not_together = False
 
 	end_time = time.time()
 	total_time = end_time - start_time
