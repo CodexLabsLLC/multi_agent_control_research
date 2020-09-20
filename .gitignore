@@ -8,3 +8,4 @@ venv/
 # Ignore VS Code generate files
 .DS_store
 .vs/
+MultiAgentControl/Chase-Follow/dronepix/
