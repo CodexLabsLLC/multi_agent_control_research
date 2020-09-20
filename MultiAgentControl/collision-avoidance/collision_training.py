@@ -89,7 +89,9 @@ def main():
 
         train_op = training(cost, global_step)
 
-        sess = tf.Session()
+        config = tf.ConfigProto()
+        config.gpu_options.allow_growth = True
+        sess = tf.Session(config=config)
 
         init_op = tf.global_variables_initializer()
 

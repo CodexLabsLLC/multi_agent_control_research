@@ -38,12 +38,12 @@ f1 = client.takeoffAsync()
 f1.join()
 
 airsim.wait_key('Begin movement towards obstacle')
-client.moveByVelocityAsync(0, -2, 0, 2000)
+
 
 imagequeue = []
-
+client.moveByVelocityAsync(0, 2, 0, 2000)
 while True:
-
+    
     # get RGBA camera images from the car
     responses = client.simGetImages([airsim.ImageRequest(1, airsim.ImageType.Scene)])  
 
