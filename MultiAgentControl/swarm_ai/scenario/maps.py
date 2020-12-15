@@ -19,5 +19,5 @@ class Rendezvous(Objective):
         self.pos_y_boundary = 200 # meters
         self.neg_y_boundary = -200 # meters
     
-    def evaluate(self, state):
-        return self.together(state)
+    def evaluate(self, positions, state):
+        return self.together(positions, state)

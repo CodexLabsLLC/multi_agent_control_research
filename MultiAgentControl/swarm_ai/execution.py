@@ -9,12 +9,17 @@ import traceback
 import boto3
 import sys
 import json
+import pandas as pd
+import uuid
 
+from datetime import datetime
 from utils.distance_utils import haversine
+from utils.date_utils import convert_datetime_to_str
 from swarm import Swarm
 from scenario import Scenario
 from control import Control
 from drone import Drone
+from db import DB
 
 
 def enable_control(client, drones: list) -> None:
@@ -46,10 +51,14 @@ def takeoff(client, drones: list) -> None:
 def get_all_drone_positions(client, drones: list) -> np.array:
     for i, drone_name in enumerate(list(drones)):
         state_data = client.getMultirotorState(vehicle_name=drone_name)
+        if debug:
+            print(state_data)
+            print(state_data.gps_location)
         drones[drone_name].pos_vec3 = position_to_list(state_data.kinematics_estimated.position)
         drones[drone_name].gps_pos_vec3 = gps_position_to_list(state_data.gps_location)
+        drones[drone_name].current_velocity = gps_velocity_to_list(state_data.kinematics_estimated.linear_velocity)
 
-
+"""
 def update_communication_matrix(client, comm_matrix: np.array, drones: np.array) -> bool:
     for i, parameter_list in enumerate(comm_matrix):
         for j, individual_list in enumerate(parameter_list):
@@ -65,6 +74,7 @@ def update_communication_matrix(client, comm_matrix: np.array, drones: np.array)
                     vehicle_name=find_name(i)).can_communicate
             else:
                 comm_matrix[i, j] = True
+"""
 
 
 def position_to_list(position_vector) -> list:
@@ -75,13 +85,19 @@ def gps_position_to_list(gps_vector) -> list:
     return [gps_vector.latitude, gps_vector.longitude, gps_vector.altitude]
 
 
+def gps_velocity_to_list(velocity_vector) -> list:
+    return [velocity_vector.x_val, velocity_vector.y_val, velocity_vector.z_val]
 
+
+"""
 def propagate_coordinates(client, comm_matrix: np.array, drones: np.array):
     for i, drone_comm_params in enumerate(comm_matrix):
         for j, individual_param in enumerate(drone_comm_params):
             if comm_matrix[i, j] == True and len(drones[find_name(i)].swarm_positions) < len(drones):
+                # packet build_comms_packet()
+                # drone_i.communicate(drone_j, packet, fade=0.2, max_dist=dist, packet_drop="Gaussian")
                 drones[find_name(i)].swarm_positions.append(drones[find_name(j)].pos_vec3)
-
+"""
 
 """
 [[[cog
@@ -94,6 +110,7 @@ with open(FILENAME, 'r') as f:
 ]]] """
 def average_drone_positions(state_vector):
     positions = [state_vector[name] for name in list(state_vector)]
+    addition = 1
     x = 0.0
     y = 0.0
     z = 0.0
@@ -102,11 +119,11 @@ def average_drone_positions(state_vector):
         y += drone_positions[1]
         z += drone_positions[2]
     for i, drone_name in enumerate(state_vector):
-        if i % 2 == 0:
-            addition = 1
+        if i % 2:
+            addition = 0
         else:
             addition = -1
-        state_vector[drone_name] = [(x/float(len(state_vector))) + addition, (y/float(len(state_vector))) + addition, (-abs(z/float(len(state_vector))) - 30 + addition)]
+        state_vector[drone_name] = [(x/float(len(state_vector))) + addition, (y/float(len(state_vector))) + addition, -42]
 #[[[end]]]
 
 
@@ -153,7 +170,7 @@ def build_vehicle_distance_matrix(drones: dict,
         for j, column in enumerate(row):
             if i != j:
                 first_drone = drones[find_name(i)].gps_pos_vec3
-                second_drone = drones[find_name(i)].gps_pos_vec3
+                second_drone = drones[find_name(j)].gps_pos_vec3
                 distance_matrix[i, j] = round(haversine(
                     first_drone[0],
                     first_drone[1],
@@ -170,21 +187,97 @@ def find_name(numb: int) -> str:
     return chr(j)
 
 
-def evaluate_together_matrix(distance_matrix: list) -> bool:
-    """
-        Given a matrix containing all of the distances between each drone,
-        evaluate each cell to see if the drones are within some distance
-        between each other.
+def send_finished_file_to_s3(minutes, seconds):
+    s3 = boto3.client('s3', aws_access_key_id='AKIAZLJJC2FVAE5VNBR6', aws_secret_access_key='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')
+    execution_file_name = 'finished.txt'
+    with open(execution_file_name, 'w') as f:
+        try:
+            f.write('Completed on: {}\n'.format(datetime.today().strftime('%m/%d/%Y %I:%M%p')))
+            f.write('Total time of execution: {} mins {} secs\n'.format(minutes, seconds))
+            f.write('Finished algorithm Execution!')
+        except Exception as error:
+            print(error)
 
-        Input: distance_matrix - i x j matrix - each cell is the Haversine distance
-               between the ith and jth drone.
+    with open(execution_file_name, 'rb') as f:
+        try:
+            response = s3.upload_fileobj(f,
+                                         "swarmsimulations",
+                                         'notifications/finished_{}.txt'.format(datetime.today().strftime('%m_%d_%Y')))
+            print(response)
+        except Exception as e:
+            print(e)
 
-        Output: together - i x j matrix - boolean matrix with each cell representing
-                whether the ith and jth drones are within the final separation distance.
-    """
-    together = copy.deepcopy(
-        distance_matrix)  # Ensure the matrix doesn't copy the original matrix.
-    return together < final_separation_distance
+
+def save_data_to_database(position_history, state_vectors, distances, commanded_position_history, database):
+    print(len(state_vectors))
+    print(len(distances))
+    print(state_vectors)
+    print(distances)
+    pos_commit = database.commit_many_results(database.data_structs['positions'], position_history)
+    state_vec_commit = database.commit_many_results(database.data_structs['state_vectors'], state_vectors)
+    cmd_pos_commit = database.commit_many_results(database.data_structs['cmd_poss'], commanded_position_history)
+    dist_commit = database.commit_many_results(database.data_structs['distance_matrices'], distances)
+    if pos_commit:
+        print("Positions were saved to the database!")
+    if state_vec_commit:
+        print("State vectors were saved to the database!")
+    if cmd_pos_commit:
+        print("Commanded position vectors were saved to the database!")
+    if dist_commit:
+        print("Distance matrices were saved to the database!")
+
+
+def modify_data_object_for_data_transfer(data_tuple):
+    data_tuple = list(data_tuple)
+    data_tuple[-1] = convert_datetime_to_str(data_tuple[-1])
+    return data_tuple
+
+def generate_data_file_and_upload_to_s3(position_history, state_vectors, distances, commanded_position_history, drones, objective_met, minutes, seconds):
+    # Read in the JSON file
+    with open('data_structure.json', 'r') as f: 
+        data_struct = json.load(f)
+
+    # Update the JSON structure
+    data_struct['SimulationID'] = sim_id
+    data_struct['S3UUID'] = file_key
+    data_struct['CompletionTimeSeconds'] = seconds
+    data_struct['CompletionTimeMinutes'] = minutes
+    if objective_met:
+        data_struct['ObjectiveMet'] = 'True'
+    else:
+        data_struct['ObjectiveMet'] = 'False'
+    for drone_name in list(drones):
+        data_struct['Drones'].append(drones[drone_name].name)
+    for state_vector in state_vectors:
+        state_vector = modify_data_object_for_data_transfer(state_vector)
+        data_struct['StateVectors'].append(state_vector)
+    for position in position_history:
+        position = modify_data_object_for_data_transfer(position)
+        data_struct['Positions'].append(position)
+    for distance in distances:
+        distance = modify_data_object_for_data_transfer(distance)
+        data_struct['Distances'].append(distance)
+    for cmd_pos in commanded_position_history:
+        cmd_pos = modify_data_object_for_data_transfer(cmd_pos)
+        data_struct['CommandedPositions'].append(cmd_pos)
+
+    # Save the JSON file to the container
+    with open('data_structure.json', 'w') as f:
+        json.dump(data_struct, f)
+
+    # Upload the JSON file to S3
+    s3_client = boto3.client('s3',
+                             aws_access_key_id='AKIAZLJJC2FVAE5VNBR6',
+                             aws_secret_access_key='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')
+    with open('data_structure.json', 'rb') as f:
+        try:
+            response = s3_client.upload_fileobj(f,
+                                         "swarmsimulations",
+                                         'data_files/{}/data_structure.json'.format(file_key))
+            print('Data file has been uploaded to S3!')
+        except Exception as e:
+            print(e)
+            print('There was an error uploading the file to S3!')
 
 
 # ====================================================================================================== #
@@ -199,14 +292,31 @@ def evaluate_together_matrix(distance_matrix: list) -> bool:
 
 # Load vehicle names as a list for easy iteration.
 # TO DO: This will be drawn from the parameters file loading (Rules sheet)
+debug = False
 
 file_key = sys.argv[1]
 bucket_name = 'swarmsimulations'
 
-s3 = boto3.resource('s3')
-sim_settings = s3.Object(bucket_name, file_key)
+print(file_key)
+print("sim_settings/{}/user_input.json".format(file_key))
+
+database = DB(user='tyler', password='LaX!!616678')
+
+try:
+    connected = database.make_connection()
+    if connected:
+        print("Connected to data acquisition system!")
+    else:
+        print("There was an issue connecting to the data acquisition.")
+except Exception:
+    traceback.print_exc()
+
+s3 = boto3.resource('s3', aws_access_key_id='AKIAZLJJC2FVAE5VNBR6', aws_secret_access_key='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')
+sim_settings = s3.Object(bucket_name, "sim_settings/{}/user_input.json".format(file_key))
 sim_settings = sim_settings.get()['Body'].read().decode('utf-8')
 sim_settings = json.loads(sim_settings)
+
+sim_id = int(sim_settings["Algorithm"]["ID"])
 
 scenario = Scenario(id=sim_settings["Algorithm"]["Scenario"]["scenario_id"],
                         weather=sim_settings["Algorithm"]["Scenario"]["weather_effects"])
@@ -223,8 +333,20 @@ for i, drone_name in enumerate(swarm.drones):
 control = Control(swarm, scenario)
 control.generate_state_vector()
 
+for i, drone_name in enumerate(list(control.swarm.drones)):
+    if connected:
+        drone_data = (sim_id, drone_name, 2.0, "SimpleFlight")
+        committed = database.commit_result(database.data_structs["drone"], drone_data)
+        if committed:
+            print("Drone {} was committed to the database!".format(drone_name))
+        else:
+            print("There was an error committing the drone to the database.")
+
 with open('settings.json', 'r') as f:
     settings = json.load(f)
+
+print(control.swarm.drones)
+print(swarm.drones)
 
 for drone_name in control.swarm.drones:
     drone = control.swarm.drones[drone_name]
@@ -235,14 +357,35 @@ for drone_name in control.swarm.drones:
     drone.pos_vec3[1] = positions['Y']
     drone.starting_pos_vec3[2] = positions['Z']
     drone.pos_vec3[2] = positions['Z']
+    positions['X'] = float(positions['X'])
+    positions['Y'] = float(positions['Y'])
+    positions['Z'] = float(positions['Z'])
+    if connected:
+        pos_data = (int(sim_id), drone_name, positions['X'], positions['Y'], abs(positions['Z']), 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, datetime.utcnow())
+        print(pos_data)
+        committed = database.commit_result(database.data_structs['position'], pos_data)
+        if committed:
+            print("Initial drone position recorded for drone {}!".format(drone_name))
+        else:
+            print("There was an issue updating the position for drone {}".format(drone_name))
 
 for drone_name in list(control.swarm.drones):
     print('\n', drone_name, control.swarm.drones[drone_name].pos_vec3)
 
 vehicle_names = [ drone_name for drone_name in control.swarm.drones ]
 
-time_step = 5  # seconds
+# Each list here is meant to store the records for each set of data we
+# are collecting. This process is much faster then trying to commit all
+# of the data during actual algorithm execution.
+position_history = []
+commanded_position_history = []
+distances = []
+state_vectors = []
+
+time_step = 3  # seconds
 final_separation_distance = 10  # meters
+minutes = 0
+seconds = 0
 
 # We want a matrix to track who can communicate with who!
 # It should be a nxn matrix, with each drone tracking itself and the matrix looks like
@@ -250,14 +393,17 @@ final_separation_distance = 10  # meters
 # drone_1    true    false   ... true
 # drone_2    false   true    ... true
 # drone_n    false   false   ... true
-communications_tracker = np.zeros(
-    (len(vehicle_names), len(vehicle_names)), dtype=bool)
+
+distance_matrix = np.zeros((len(vehicle_names), len(vehicle_names)))
 
 # We mimic the memory bank of a drone, tracking the relative positions.
 # It should be a n-length vector, with each drone tracking itself and the matrix looks like
 
 # drone_1 drone_2 ... drone n
 # [x,y,z] [x,y,z] ... [x,y,z]
+
+minutes = 0
+seconds = 0
 
 try:
     client = airsim.MultirotorClient()
@@ -284,14 +430,28 @@ try:
         for drone_name in control.swarm.drones:
             print('\n', drone_name, control.swarm.drones[drone_name].pos_vec3, control.swarm.drones[drone_name].gps_pos_vec3)
 
-        update_communication_matrix(client, communications_tracker, control.swarm.drones)
+        # update_communication_matrix(client, communications_tracker, control.swarm.drones)
 
         for i, drone_name in enumerate(control.swarm.drones):
             transform_to_standard_basis_coordinates(control.swarm.drones[drone_name].pos_vec3,
                                                     control.swarm.drones[drone_name].starting_pos_vec3)
 
         # Propagate location to drones that can communicate
-        propagate_coordinates(client, communications_tracker, control.swarm.drones)
+        # propagate_coordinates(client, communications_tracker, control.swarm.drones)
+
+        for drone_name in control.swarm.drones:
+            position_history.append((sim_id,
+                                     drone_name,
+                                     control.swarm.drones[drone_name].pos_vec3[0],
+                                     control.swarm.drones[drone_name].pos_vec3[1],
+                                     abs(control.swarm.drones[drone_name].pos_vec3[2]),
+                                     control.swarm.drones[drone_name].gps_pos_vec3[0],
+                                     control.swarm.drones[drone_name].gps_pos_vec3[1],
+                                     control.swarm.drones[drone_name].gps_pos_vec3[2],
+                                     control.swarm.drones[drone_name].current_velocity[0],
+                                     control.swarm.drones[drone_name].current_velocity[1],
+                                     control.swarm.drones[drone_name].current_velocity[2],
+                                     datetime.utcnow()))
         
         # This state vector will be modified in the future to track something other then states!
         for i, drone_name in enumerate(control.state_vector):
@@ -326,6 +486,12 @@ try:
         control.evaluate_state_vector()
 
         print(control.state_vector)
+        
+        state_vectors.append((sim_id, json.dumps(control.state_vector), datetime.utcnow()))
+        
+        build_vehicle_distance_matrix(control.swarm.drones, distance_matrix)
+
+        distances.append((sim_id, json.dumps(np.ndarray.tolist(distance_matrix)), datetime.utcnow()))
 
         for key, value in control.state_vector.items():
             control.state_vector[key] = transform_to_relative_basis_coordinates(value,
@@ -344,8 +510,8 @@ try:
 
     end_time = time.time()
     total_time = end_time - start_time
-    minutes = round(total_time / 60, 3)
-    seconds = np.floor((total_time / 60) - minutes)
+    minutes = np.floor(total_time / 60)
+    seconds = round(((total_time / 60) - minutes) * 60, 2)
     print("Total Time: {mins} mins {secs} secs".format(
         mins=minutes, secs=seconds))
     # airsim.wait_key('Press any key to reset to original state')
@@ -354,6 +520,9 @@ except Exception:
     traceback.print_exc()
 finally:
     if client:
+        send_finished_file_to_s3(minutes, seconds)
         client.reset()
         disable_control(client, vehicle_names)
+    save_data_to_database(position_history, state_vectors, distances, commanded_position_history, database)
+    generate_data_file_and_upload_to_s3(position_history, state_vectors, distances, commanded_position_history, control.swarm.drones, control.objective_met, minutes, seconds)
     print("Finished!")

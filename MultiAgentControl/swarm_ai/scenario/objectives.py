@@ -25,8 +25,8 @@ class Objective():
         for i, row in enumerate(distance_matrix):
             for j, column in enumerate(row):
                 if i != j:
-                    first_drone = state_vector[self.find_name(i)].pos_vec3
-                    second_drone = state_vector[self.find_name(j)].pos_vec3
+                    first_drone = positions[self.find_name(i)].pos_vec3
+                    second_drone = positions[self.find_name(j)].pos_vec3
                     distance_matrix[i, j] = math.sqrt((first_drone[0] - second_drone[0])**2 + 
                                                       (first_drone[1] - second_drone[1])**2 +
                                                       (first_drone[2] - second_drone[2])**2)
